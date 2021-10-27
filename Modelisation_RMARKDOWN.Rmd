@@ -1,0 +1,627 @@
+---
+title: "Projet Modèle de Régression et Test d'Hypothèses"
+author: "Luweh Adjim Ngarti Exaucé & Laamoumri Yassine"
+date: "17/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+Dans ce projet, notre but sera d'élaborer un modèle capable d'expliquer la hauteur des vagues en fonction de plusieurs variables explicatives.
+Dans notre jeu de données, h110d est la variable à expliquer et les autres variables sont les variables explicatives.
+Etant donnée que nos variables explicatives sont composées de variable quantitatives et qualitatives, notre but est de réaliser une ANCOVA.
+
+Tout d'abord, on convertit nos variables qualitatives saison et direction en variables indicatrices afin de pouvoir mieux manipuler nos données par la suite.
+
+```{r echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(questionr)
+library(ggpubr)
+library(rstatix)
+library(broom)
+library(corrplot)
+library(leaps)
+library(glmulti)
+library(rJava)
+library(ggfortify)
+library(rmarkdown)
+library(cowplot)
+#Importation des données 
+setwd("C:/Users/yassi/OneDrive/Université/S7/Modèles de régression linéaire/Projet")
+load("vagues.Rdata")
+
+vagues = as.data.frame(vagues)
+
+
+
+
+#On créee des colonnes indicatrices en fonction des variables qualitatives saison et direction
+vagues <-  mutate(vagues,printemps = case_when(
+  saison == 'Printemps'~ 1,
+  saison != 'Printemps'~ 0
+),ete = case_when(
+  saison == 'Ete'~ 1,
+  saison != 'Ete'~ 0
+),
+automne = case_when(
+  saison == 'Automne'~ 1,
+  saison != 'Automne'~ 0
+),
+hiver = case_when(
+  saison == 'Hiver'~ 1,
+  saison != 'Hiver'~ 0
+),
+est = case_when(
+  direction == 'Est'~ 1,
+  direction != 'Est'~ 0
+),
+ouest = case_when(
+  direction == 'Ouest'~ 1,
+  direction != 'Ouest'~ 0
+),
+nord = case_when(
+  direction == 'Nord'~ 1,
+  direction != 'Nord'~ 0
+),sud = case_when(
+  direction == 'Sud'~ 1,
+  direction != 'Sud'~ 0
+)
+)
+
+```
+```{r}
+head(vagues)
+```
+
+## Création de notre modèle avec toutes les variables explicatives prises en compte
+```{r }
+model <- lm(vagues$h110d~vagues$temperature+vagues$pression+vagues$humidite_relative+vagues$point2rose+vagues$visibilite_horiz+vagues$vent_vit_moy+vagues$vent_vit_rafale+vagues$vent_dir+vagues$precipitation_cum+vagues$saison*vagues$direction)
+summary(model)
+```
+
+La modèle explique environ 54% de la variabilité de la hauteur des vagues.<br>
+La p-value du modèle est faible donc le modèle est significatif.<br>
+Les variables explicatives très significatives sont vent_vit rafale et printemps:ouest car leur p-value est très faible.<br>
+Les variables explicatives significatives sont hiver:ouest, précipitation_cum, pression , vent_dir, température.<br>
+On constate qu'il y a beaucoup de coefficients ayant des p-values très élevées et donc le modèle n'est pas optimal./<br>
+On cherche donc à déterminer les corrélations entre les variables.<br>
+<br>
+
+On visualise la matrice de corrélation<br>
+On voit qu'il y a une forte corrélation positive entre : <br>
+<strong>vent_vit_rafale</strong> et <strong>vent_vit_moy</strong> <br>
+<strong>point2rose</strong> et <strong>temperature</strong> <br>
+<strong>ouest</strong> et <strong>vent_dir</strong> <br>
+
+On constate aussi une forte corrélation négative entre <strong>est</strong> et <strong>vent_dir</strong> <br>
+
+
+```{r echo=FALSE}
+vagues2 <- select(vagues,-c("saison","direction"))
+matrice_cor <- cor(vagues2)
+
+corrplot(matrice_cor)
+
+```
+
+
+Avant de déterminer un modèle optimal complet, on débute notre étude avec seulement les variables qualitatives
+afin de voir s'il existe une relation entre les variables qualitatives
+et la variable à expliquer <br>
+On se retrouve à réaliser une ANOVA à deux facteurs. <br>
+
+
+```{r}
+model_anova <- lm(data=vagues, h110d~saison*direction)
+summary(model_anova)
+```
+
+
+
+On affiche les différents boxplots pour avoir une idée de la relation entre les variables qualitatives et la variable 
+à expliquer <br>
+
+
+```{r}
+boxplot(data=vagues,h110d~saison)
+boxplot(data=vagues,h110d~direction)
+boxplot(data=vagues,h110d~saison*direction)
+
+```
+
+```{r}
+anova(model_anova)
+```
+
+
+On constate que la p-value de direction et saison ainsi que l'interaction entre ces deux variables est très faible <br>
+Cela veut que dire que l'impact de ces variables est significatif sur la hauteur des vagues <br>
+
+
+
+On crée une variable groupement avec les deux variables qualitatives saison et direction<br>
+Maintenant, on teste l'hypothèse de linéarité entre les covariables et la variable-réponse pour chaque groupe <br>
+On constate qu'il y bien une relation linéaire entre les covariables et la variable réponse pour chaque groupe<br>
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggscatter(
+  vagues, x = "vent_dir", y = "h110d",
+  facet.by  = c("saison", "direction"), 
+  short.panel.labs = FALSE
+)+
+  stat_smooth(method = "loess", span = 0.9)
+
+
+
+ggscatter(
+  vagues, x = "point2rose", y = "h110d",
+  facet.by  = c("saison", "direction"), 
+  short.panel.labs = FALSE
+)+
+  stat_smooth(method = "loess", span = 0.9)
+
+
+ggscatter(
+  vagues, x = "temperature", y = "h110d",
+  facet.by  = c("saison", "direction"), 
+  short.panel.labs = FALSE
+)+
+  stat_smooth(method = "loess", span = 0.9)
+
+
+ggscatter(
+  vagues, x = "pression", y = "h110d",
+  facet.by  = c("saison", "direction"), 
+  short.panel.labs = FALSE
+)+
+  stat_smooth(method = "loess", span = 0.9)
+
+
+ggscatter(
+  vagues, x = "humidite_relative", y = "h110d",
+  facet.by  = c("saison", "direction"), 
+  short.panel.labs = FALSE
+)+
+  stat_smooth(method = "loess", span = 0.9)
+
+
+ggscatter(
+  vagues, x = "visibilite_horiz", y = "h110d",
+  facet.by  = c("saison", "direction"), 
+  short.panel.labs = FALSE
+)+
+  stat_smooth(method = "loess", span = 0.9)
+
+
+ggscatter(
+  vagues, x = "vent_vit_moy", y = "h110d",
+  facet.by  = c("saison", "direction"), 
+  short.panel.labs = FALSE
+)+
+  stat_smooth(method = "loess", span = 0.9)
+
+
+ggscatter(
+  vagues, x = "vent_vit_rafale", y = "h110d",
+  facet.by  = c("saison", "direction"), 
+  short.panel.labs = FALSE
+)+
+  stat_smooth(method = "loess", span = 0.9)
+
+ggscatter(
+  vagues, x = "precipitation_cum", y = "h110d",
+  facet.by  = c("saison", "direction"), 
+  short.panel.labs = FALSE
+)+
+  stat_smooth(method = "loess", span = 0.9)
+```
+
+Nous cherchons à savoir s'il existe une intéraction significative entre les covariables et les variables de groupement saison et direction<br>
+
+```{r warning=FALSE, message=FALSE}
+vagues %>%
+  unite(col = "group", saison, direction) %>%
+  anova_test( h110d ~ group*temperature+group*pression+group*humidite_relative+group*point2rose+group*precipitation_cum+group*visibilite_horiz+group*vent_vit_moy+group*vent_vit_rafale+group*vent_dir)
+
+```
+
+On voit qu'il existe une intéraction significative avec vent_vit_rafale,precipitation_cum,point2rose,humidite_relative,temperature<br>
+
+
+
+## Méthode du Backward
+
+On utilise maintenant la méthode de backward afin de trouver un meilleur modèle 
+
+```{r warning=FALSE, message=FALSE}
+select.variables <- step(model, direction="backward", data=vagues)
+# 
+summary(select.variables)
+```
+
+Après avoir utiliser la méthode de backward, les variables <strong>temperature</strong>, <strong>visibilité_horiz</strong> et <strong>vent_vit_moy</strong> ont été retirés<br>
+Le R² ajusté est de 0.5435 donc le modèle explique environ 54% de la variabilité de <strong>la hauteur des vagues</strong><br>
+Ce nouveau modèle a un p-value très faible donc le modèle est significatif<br>
+La majorité des coefficients ont des p-values très significatives car très faibles<br>
+
+
+
+## Recherche du meilleur modèle avec la méthode exhaustive à partir du modèle complet
+
+
+```{r}
+choix <- regsubsets(data=vagues,h110d~temperature+pression+humidite_relative+point2rose+visibilite_horiz+vent_vit_moy+vent_vit_rafale+vent_dir+precipitation_cum+direction*saison,int=T ,method="exh")
+resume.choix <- summary(choix)
+
+taille <- as.double(rownames(resume.choix$wh))+1
+plot(choix,scale="adjr2")
+```
+
+
+On remarque sur ce graphique qu'après avoir obtenu une multitude de modèle en utilisant la méthode exhaustive,
+le meilleur R² ajusté que l'on peut obtenir est d'environ 0.55 donc notre modèle obtenu avec la méthode du backward
+est intéressant <br>
+<br>
+
+#### Maintenant nous allons tester les hypothèses de validations du modèle
+
+On effectue le test de normalité des résidus<br>
+
+
+
+```{r}
+model_backward <- lm(data=vagues,h110d~pression+humidite_relative+point2rose+vent_vit_rafale+vent_dir+precipitation_cum+saison+direction)
+
+
+plot(model_backward,1)
+```
+
+L'hypothèse d'homoscédasticité des résidus n'est pas vérifiée car on a une courbe légérement en cloche
+alors que l'on doit obtenir une droite horizontale <br>
+
+On applique une transformation logarithmique à la variable à expliquer afin de satisfaire cette hypothèse.
+
+
+
+
+```{r}
+model_backward <- lm(data=vagues,log(h110d)~pression+humidite_relative+point2rose+vent_vit_rafale+vent_dir+precipitation_cum+saison+direction)
+
+summary(model_backward)
+```
+
+On remarque que le R² ajusté est passé à environ 50% <br>
+Cependant, l'écart type résiduel a diminué de moitié et est de 0.4181 <br>
+
+On vérifie à nouveau les hypothèses de validité du modèle<br>
+
+```{r}
+autoplot(model_backward)
+```
+
+##### Toutes les hypothèses sont vérifiés !
+
+Ce modèle ayant un R² ajusté et un écart type résiduelle acceptable, on peut retenir ce modèle comme référence pour la partie Compléments.<br>
+
+On crée le modèle complet correspondant à ce modèle afin de faire le test d'emboîtement dans la partie Compléments <br>
+
+```{r}
+model_complet_backward <- lm(data=vagues,log(h110d)~temperature+pression+humidite_relative+point2rose+visibilite_horiz+vent_vit_moy+vent_vit_rafale+vent_dir+precipitation_cum+saison*vagues$direction)
+summary(model_complet_backward)
+```
+
+
+# Tentative d'amélioration de notre modèle
+
+#### Toutefois, on souhaite tenter d'améliorer ce modèle en effectuant certaines modifications sur nos données et notre modèle
+
+Pour cela, on effectue une recherche exhaustive des modèles possibles puis on cherche le modèle ayant le plus grand R² ajusté
+
+```{r results='hide'}
+model_ameliore <- regsubsets(h110d~temperature+pression+humidite_relative+point2rose+visibilite_horiz+vent_vit_moy+vent_vit_rafale+vent_dir+precipitation_cum+saison*direction,data=vagues,
+                             nbest = 1,       # 1 seul meilleur pour chaque nombre de variables
+                             nvmax = NULL,    # NULL pas de limites pour le 
+                             force.in = NULL,  # pas de variables à inclure de force
+                             force.out = NULL,  # pas de variables à exclure de force.
+                             method = "exhaustive")  #
+
+
+summary(model_ameliore)
+```
+
+On affiche le graphique permettant de voir à peu près quelle est la valeur maximale du R² ajusté qu'un de nos modèles trouvés a atteint<br>
+
+
+```{r}
+plot(model_ameliore,scale="adjr2")
+```
+
+
+On remarque que le R² ajusté maximale est d'environ 0.55<br>
+On cherche à récupérer le modèle correspondant<br>
+
+
+```{r}
+summary.out <- summary(model_ameliore)
+
+summary.out$which[which.max(summary.out$adjr2),]
+```
+
+Cette sortie nous permet de savoir quelles sont les variables présentent dans le modèle ayant le plus grand R² ajusté<br>
+
+### Construction du modèle amélioré
+
+
+```{r}
+model_ameliore <- lm(data=vagues,h110d~1+humidite_relative+precipitation_cum+printemps:ouest+printemps:sud+temperature+vent_vit_rafale+ete+nord+vent_dir+hiver+hiver:ouest+hiver:sud)
+summary(model_ameliore)
+```
+
+
+### Vérification des hypothèses de validité du modèle
+
+
+```{r}
+autoplot(model_ameliore)
+```
+
+
+On constate que l'hypothèse d'homoscédasticité n'est pas vérifiée <br>
+On effectue une transformation logorithmique<br>
+
+
+
+```{r}
+model_ameliore <- lm(data=vagues,log(h110d)~1+humidite_relative+precipitation_cum+printemps:ouest+printemps:sud+temperature+vent_vit_rafale+ete+nord+vent_dir+hiver:ouest+hiver:sud)
+
+autoplot(model_ameliore)
+```
+
+Après transformation, on voit que toutes les hypothèses de validité du modèle sont vérifiées<br>
+
+
+```{r}
+summary(model_ameliore)
+```
+
+Notre modèle est fortement intéressant puisque chacunes variables explicatives à une p-valeur très faible<br>
+Le R² ajusté est d'environ 50% et la p-valeur du modèle est très faible donc le modèle est très significatif<br>
+<br>
+
+#### On cherche à vérifier la présence de points aberrants en utilisant la distance de Cook
+
+
+```{r}
+plot(model_ameliore,5)
+
+```
+
+On enleve le point aberrant  1 en utilisant la distance de Cook comme réference<br>
+
+On supprime la 1ere ligne<br>
+```{r}
+vagues <- slice(vagues,2:453)
+model_ameliore <- lm(data=vagues,log(h110d)~1+humidite_relative+precipitation_cum+printemps:ouest+printemps:sud+temperature+vent_vit_rafale+ete+nord+vent_dir+hiver:ouest+hiver:sud)
+
+summary(model_ameliore)
+```
+
+
+Le choix de supprimer ce poids aberrant nous a permis d'améliorer notre R² ajusté <br>
+Cependant, la p-valeur associée à la variable **precipitation-cum** n'est plus significatif.<br>
+On décide d'enlever cette variable de notre modèle<br>
+
+```{r}
+model_ameliore <- lm(data=vagues,log(h110d)~1+humidite_relative+printemps:ouest+printemps:sud+temperature+vent_vit_rafale+ete+nord+vent_dir+hiver:ouest+hiver:sud)
+summary(model_ameliore)
+```
+
+On voit ici toutes les variables explicatives ont une p-valeur très faible ce qui rend ces variables explicatives très significatives<br>
+De plus, l'écart-type résiduel est d'environ **0.41**, ce qui est faible et rend notre modèle encore plus significatif<br>
+La p-valeur de notre modèle est très faible, on peut conclure que notre modèle est significatif. <br>
+
+```{r}
+autoplot(model_ameliore)
+plot(model_ameliore,5)
+vagues <- vagues[-380,]
+
+model_ameliore <- lm(data=vagues,log(h110d)~1+humidite_relative+printemps:ouest+printemps:sud+temperature+vent_vit_rafale+ete+nord+vent_dir+hiver:ouest+hiver:sud)
+summary(model_ameliore)
+autoplot(model_ameliore)
+```
+
+Pour terminer, nous avons décidé de supprimer la ligne 380 dans nos données car on le considère comme un point abberrant avec la distance de Cook<br>
+Puis, on remarque que notre modèle est encore meilleur puisque notre R² ajusté à augmenté et est d'environ 52%<br>
+Notre écart type résiduel estimé à lui aussi diminué légérement<br>
+Nos variables explicatives de notre modèle final ont toutes une p-valeur très faible, donc elles sont significatifs. <br>
+Enfin, notre modèle respecte toutes les hypothèses de validité du modèle<br>
+
+#### On vérifie une dernière fois s'il existe un meilleur modèle que le notre à partir des mêmes variables de départ et en utilisant la méthode exhaustive
+
+```{r}
+model_ameliore2 <- regsubsets(log(h110d)~1+humidite_relative+printemps:ouest+printemps:sud+temperature+vent_vit_rafale+ete+nord+vent_dir+hiver:ouest+hiver:sud,data=vagues,
+                              nbest = 1,       # 1 seul meilleur pour chaque nombre de variables
+                              nvmax = NULL,    # NULL pas de limites pour le 
+                              force.in = NULL,  # pas de variables à inclure de force
+                              force.out = NULL,  # pas de variables à exclure de force.
+                              method = "exhaustive")
+plot(model_ameliore2,scale="adjr2")
+
+summary.out <- summary(model_ameliore2)
+
+
+summary.out$which[which.max(summary.out$adjr2),]
+```
+
+### On a confirmé le fait que l'on ne peut obtenir un modèle emboîté meilleur que ce modèle, on garde donc ce modèle pour modèliser la hauteur des vagues<br>
+
+Pour résumer, notre meilleur modèle est composé de 10 variables explicatives et sur ces 10 variables, 4 sont issues d'interactions entre variables qualitatives et 2 sont issues ( ete,nord) de la variable qualitative **Saison** <br>
+Il nous reste donc que 4 variables explicatives qui n'ont pas été transformées (**humidité_relative, température, vent_vit_rafale et vent_dir**) et ces 4 variables là ont les p-valeur les plus basses , ce qui montre que ce sont les variables les plus significatives <br>
+
+
+# Prédiction de notre modèle amélioré et du modèle backward
+
+
+En premier lieu, nous allons construire un dataframe regroupant les données de base et les données prédites avec notre modèle amélioré puis comparé leur distribution<br>
+
+```{r echo=FALSE}
+vagues_predict <- predict(model_ameliore, vagues, se.fit = FALSE, scale = NULL, df = Inf,
+                          interval = c("none", "confidence", "prediction"),
+                          level = 0.95, type = c("response", "terms"),
+                          terms = NULL, na.action = na.pass,
+                          pred.var = res.var/weights, weights = 1)
+
+vagues_predict <- as.data.frame(vagues_predict)
+
+vagues_base <- as.data.frame(vagues$h110d)
+
+vagues_echantillon <- as.data.frame(cbind(rep(seq(1:451),2)))
+
+
+
+dataset <- c(vagues_base$`vagues$h110d`,vagues_predict$vagues_predict)
+vagues_echantillon <- mutate(vagues_echantillon,dataset = dataset)
+
+
+combine_data <- c(rep('Base',451),rep('Prediction_Amélioré',451))
+
+
+vagues_echantillon <- mutate(vagues_echantillon,type = combine_data)
+colnames(vagues_echantillon)[1] = 'Y'
+
+head(vagues_echantillon)
+```
+
+Après avoir crée notre tableau de donnée *vagues_enchantillon*, nous pouvons afficher la courbe de densité de notre prédiction.
+
+
+```{r echo=FALSE, message=FALSE}
+a <- ggplot(vagues_echantillon, aes(x = dataset))
+a_density <-  a + geom_density(aes(fill = type), alpha = 0.4) + theme_minimal()
+a_hist_density <- a + geom_histogram(aes(y = ..density.., color = type, fill = type),  alpha = 0.4, position = "identity") + geom_density(aes(color = type), size =1)+theme_minimal()
+
+plot_grid(a_density,a_hist_density)
+```
+
+
+Notre densité ressemble pas à la courbe de densité des données terrains.<br>
+
+Maintenant, on affiche la courbe de densité du modèle backward.<br>
+
+```{r echo=FALSE, message=FALSE}
+vagues_predict_backward <- predict(model_backward, vagues, se.fit = FALSE, scale = NULL, df = Inf,
+                                   interval = c("none", "confidence", "prediction"),
+                                   level = 0.95, type = c("response", "terms"),
+                                   terms = NULL, na.action = na.pass,
+                                   pred.var = res.var/weights, weights = 1)
+
+
+vagues_predict_backward <- as.data.frame(vagues_predict_backward)
+
+vagues_base <- as.data.frame(vagues$h110d)
+
+vagues_echantillon_backward <- as.data.frame(cbind(rep(seq(1:451),2)))
+
+
+
+
+dataset_backward <- c(vagues_base$`vagues$h110d`,vagues_predict_backward$vagues_predict_backward)
+vagues_echantillon_backward <- mutate(vagues_echantillon_backward,dataset_backward = dataset_backward)
+
+
+combine_data_backward <- c(rep('Base',451),rep('Prediction_Backward',451))
+
+
+vagues_echantillon_backward <- mutate(vagues_echantillon_backward,type = combine_data_backward)
+colnames(vagues_echantillon)[1] = 'Y'
+
+b <- ggplot(vagues_echantillon_backward, aes(x = dataset_backward))
+backward_density <-  b + geom_density(aes(fill = type), alpha = 0.4) + theme_minimal()
+hist_density_backward <- b + geom_histogram(aes(y = ..density.., color = type, fill = type),  alpha = 0.4, position = "identity") + geom_density(aes(color = type), size =1) + theme_minimal()
+
+
+plot_grid(backward_density,hist_density_backward)
+```
+
+La courbe de densité des prédictions du modèle backward ressemble fortement à celle du modèle amélioré<br>
+Nous allons superposer les trois densités pour mieux visualiser cela<br>
+
+```{r echo=FALSE, message=FALSE}
+vagues_echantillon_comparaison <- as.data.frame(cbind(rep(seq(1:451),3)))
+
+dataset_prediction <- c(vagues_base$`vagues$h110d`,vagues_predict_backward$vagues_predict_backward,vagues_predict$vagues_predict)
+vagues_echantillon_comparaison <- mutate(vagues_echantillon_comparaison,dataset_prediction= dataset_prediction)
+
+
+combine_data_comparaison <- c(rep('Base',451),rep('Prediction_Backward',451),rep('Prediction_Amélioré',451))
+
+
+vagues_echantillon_comparaison <- mutate(vagues_echantillon_comparaison,type = combine_data_comparaison)
+colnames(vagues_echantillon_comparaison)[1] = 'Y'
+
+
+comparaison_plot <- ggplot(vagues_echantillon_comparaison, aes(x = dataset_prediction))
+comparaison_plot_density <-  comparaison_plot + geom_density(aes(fill = type), alpha = 0.4) + theme_minimal()
+hist_density_comparaison_plot <- comparaison_plot + geom_histogram(aes(y = ..density.., color = type, fill = type),  alpha = 0.4, position = "identity") + geom_density(aes(color = type), size =1) + theme_minimal()
+
+
+plot_grid(comparaison_plot_density,hist_density_comparaison_plot)
+```
+
+
+On remarque que les distributions des prédictions de nos deux modèles sont presque identitiques.<br>
+Les deux modèles n'ont pas un pouvoir de prédiction élevé<br>
+On peut expliquer cela par leur R² ajusté qui est moyen. <br>
+Notre but n'est pas de prédire les observations d'entraînement mais plutôt de visualiser les données prédites par nos
+deux modèles et les comparer aux données terrains.<br>
+
+On ne peut pas prédire des données qui nous ont permis de construire nos modèles
+Il serait intéressant d'avoir des données supplémentaires pour mettre à l'épreuve la prévision de nos modèles<br>
+
+
+
+Ce projet nous a permis d'explorer toutes les notions vues en cours et tds, nous avons du raisonner longuement sur une stratégie afin de trouver le meilleur modèle expliquant la hauteur des vagues<br>
+Cela nous a poussé à effectuer de nombreuses recherches et a enrichi nos connaissances sur les modèles de régressions et les tests d'hypothèses<br>
+
+
+# Annexe 
+
+### Données utilisées pour la partie Compléments question 6
+
+
+#### Test d'adéquation à la loi normale des 20 premiers résidus
+
+```{r}
+residus_20 <- as.data.frame(model_backward$residuals[1:20])
+residus_20sort <- arrange(residus_20,desc(residus_20))
+var_residus_20 <- var(residus_20)
+image_residus = pnorm(as.double(unlist(residus_20sort[1]),mean=0,sd = sqrt(var_residus_20)))
+
+matrice_residus <- cbind(residus_20sort,image_residus)
+n=20
+kolmogov_a <- rep('NA',n)
+kolmogov_b <- rep('NA',n)
+kolmogov_max <- rep('NA',n)
+for(i in 1:n){
+  kolmogov_a[i] = abs(matrice_residus$image_residus[i] - (i/n))
+  kolmogov_b[i] = abs(matrice_residus$image_residus[i] - (i-1)/n)
+  kolmogov_max[i] = max(kolmogov_a[i],kolmogov_b[i])
+}
+max_col_kolmogov <- max(kolmogov_max)
+
+matrice_residus <- mutate(matrice_residus,kolmogov_a)
+matrice_residus <- mutate(matrice_residus,kolmogov_b)
+matrice_residus <- mutate(matrice_residus,kolmogov_max)
+colnames(matrice_residus)[1] = 'Résidus'
+hist_res <- ggplot(model_backward,aes(x =model_backward$residuals,y=..density.. ))+
+  geom_histogram(col='white',bins = 30) +
+  stat_density(geom="line",colour='red',size=2,position = 'identity') 
+
+
+hist_res
+```
+
