@@ -14,3 +14,6 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaa
 
 
 View on [Github Pages](https://ngartiexauce.github.io/Modele-de-regression-et-tests-d-hypotheses/)
+
+View on [Github Pages](https://ngartiexauce.github.io/)
+
